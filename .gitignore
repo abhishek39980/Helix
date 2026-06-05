@@ -1,0 +1,22 @@
+# Environment files
+.env
+.env.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+
+# Node
+node_modules/
+dist/
+.eslintcache
+
+# Local databases and media uploads
+db.sqlite3
+db.sqlite3-journal
+uploads/
+temp_video_*

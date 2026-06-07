@@ -10,6 +10,7 @@ import TimelineAnalyser from './components/tabs/TimelineAnalyser';
 import PropagationNetwork from './components/tabs/PropagationNetwork';
 import Console from './components/tabs/Console';
 import Settings from './components/tabs/Settings';
+import DisseminationTracker from './components/tabs/DisseminationTracker';
 import Toast from './components/ui/Toast';
 import { Compass } from 'lucide-react';
 
@@ -428,6 +429,7 @@ export default function App() {
                 )}
                 {activeTab === 'console' && <Console terminalLogs={terminalLogs} />}
                 {activeTab === 'settings' && <Settings backendUrl={BACKEND_URL} />}
+                {activeTab === 'trace' && <DisseminationTracker analysis={analysis} backendUrl={BACKEND_URL} />}
               </>
             )}
           </div>

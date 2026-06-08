@@ -2,7 +2,7 @@ import os
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from sqlalchemy import String, DateTime, ForeignKey, Text, JSON, Integer, Float
+from sqlalchemy import String, DateTime, ForeignKey, Text, JSON, Integer, Float, Boolean
 
 # Place database in backend workspace directory
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "helix.db")
@@ -117,6 +117,89 @@ class MediaSearchCache(Base):
     first_seen: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_seen: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
+class EvidenceArtifact(Base):
+    __tablename__ = "evidence_artifacts"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(String(36), ForeignKey("analysis_sessions.id", ondelete="CASCADE"), nullable=False)
+    source: Mapped[str] = mapped_column(String(100), nullable=False)
+    source_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    collection_method: Mapped[str] = mapped_column(String(100), nullable=False)
+    reliability: Mapped[float] = mapped_column(Float, default=1.0)
+    value: Mapped[dict | list | str | None] = mapped_column(JSON, nullable=True)
+    metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+class SerpApiCache(Base):
+    __tablename__ = "serpapi_cache"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    phash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    response_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    pipeline_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    prompt_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+class LandmarkIntelligenceSession(Base):
+    __tablename__ = "landmark_intelligence_sessions"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(String(36), ForeignKey("analysis_sessions.id", ondelete="CASCADE"), nullable=False)
+    final_lat: Mapped[float | None] = mapped_column(Float, nullable=True)
+    final_lng: Mapped[float | None] = mapped_column(Float, nullable=True)
+    accuracy_radius_km: Mapped[float | None] = mapped_column(Float, nullable=True)
+    final_city: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    final_region: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    final_country: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    overall_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    dominant_cluster_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_frames_processed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    frames_tier1_resolved: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    frames_tier2_resolved: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+class LandmarkDetection(Base):
+    __tablename__ = "landmark_detections"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(String(36), ForeignKey("analysis_sessions.id", ondelete="CASCADE"), nullable=False)
+    frame_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    landmark_label: Mapped[str] = mapped_column(String(500), nullable=False)
+    source: Mapped[str] = mapped_column(String(50), nullable=False)
+    raw_score: Mapped[float] = mapped_column(Float, nullable=False)
+    lat: Mapped[float | None] = mapped_column(Float, nullable=True)
+    lng: Mapped[float | None] = mapped_column(Float, nullable=True)
+    geocoded: Mapped[bool] = mapped_column(Boolean, default=False)
+    supporting_evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+class OCRDetection(Base):
+    __tablename__ = "ocr_detections"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(String(36), ForeignKey("analysis_sessions.id", ondelete="CASCADE"), nullable=False)
+    frame_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    extracted_text: Mapped[str] = mapped_column(Text, nullable=False)
+    ocr_source: Mapped[str] = mapped_column(String(50), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    resolved_lat: Mapped[float | None] = mapped_column(Float, nullable=True)
+    resolved_lng: Mapped[float | None] = mapped_column(Float, nullable=True)
+    geocoding_status: Mapped[str] = mapped_column(String(50), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+class L12ClusterResult(Base):
+    __tablename__ = "l12_cluster_results"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(String(36), ForeignKey("analysis_sessions.id", ondelete="CASCADE"), nullable=False)
+    cluster_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    member_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    weighted_member_count: Mapped[float] = mapped_column(Float, nullable=False)
+    centroid_lat: Mapped[float] = mapped_column(Float, nullable=False)
+    centroid_lng: Mapped[float] = mapped_column(Float, nullable=False)
+    is_dominant: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
 async def init_db():
     db_file = None
     if DATABASE_URL.startswith("sqlite+aiosqlite:///"):
@@ -131,7 +214,19 @@ async def init_db():
             cursor = conn.cursor()
             cursor.execute("PRAGMA table_info(analysis_sessions)")
             columns = [row[1] for row in cursor.fetchall()]
+            
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='serpapi_cache'")
+            table_exists = cursor.fetchone()
+            if table_exists:
+                cursor.execute("PRAGMA table_info(serpapi_cache)")
+                serp_cols = [row[1] for row in cursor.fetchall()]
+                if "pipeline_version" not in serp_cols:
+                    cursor.execute("ALTER TABLE serpapi_cache ADD COLUMN pipeline_version VARCHAR(50)")
+                    cursor.execute("ALTER TABLE serpapi_cache ADD COLUMN prompt_version VARCHAR(50)")
+                    conn.commit()
+                    print("[DB] Added pipeline_version and prompt_version columns to serpapi_cache table.")
             conn.close()
+            
             if columns and "video_phash" not in columns:
                 backup_path = db_file + ".backup"
                 shutil.copy2(db_file, backup_path)

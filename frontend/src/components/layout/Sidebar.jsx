@@ -1,7 +1,7 @@
 import React from 'react';
 import { 
   BarChart3, Fingerprint, FileVideo, Clock, GitFork, 
-  Terminal, Settings, Shield, Network 
+  Terminal, Settings, Shield, Network, MapPin 
 } from 'lucide-react';
 
 export default function Sidebar({ activeTab, setActiveTab }) {
@@ -9,6 +9,7 @@ export default function Sidebar({ activeTab, setActiveTab }) {
     { id: 'dashboard', label: 'OVERVIEW', icon: BarChart3 },
     { id: 'profile', label: 'PROFILE INTEL', icon: Fingerprint },
     { id: 'media', label: 'MEDIA FORENSICS', icon: FileVideo },
+    { id: 'visual_geolocation', label: 'VISUAL GEOLOCATION', icon: MapPin },
     { id: 'timeline', label: 'TIMELINE ANALYSER', icon: Clock },
     { id: 'network', label: 'PROPAGATION NET', icon: GitFork },
     { id: 'trace', label: 'GLOBAL TRACE', icon: Network },

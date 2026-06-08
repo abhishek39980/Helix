@@ -11,6 +11,7 @@ import PropagationNetwork from './components/tabs/PropagationNetwork';
 import Console from './components/tabs/Console';
 import Settings from './components/tabs/Settings';
 import DisseminationTracker from './components/tabs/DisseminationTracker';
+import VisualGeolocation from './components/tabs/VisualGeolocation';
 import Toast from './components/ui/Toast';
 import { Compass } from 'lucide-react';
 
@@ -413,6 +414,12 @@ export default function App() {
                   />
                 )}
                 {activeTab === 'media' && <MediaForensics analysis={analysis} backendUrl={BACKEND_URL} />}
+                {activeTab === 'visual_geolocation' && (
+                  <VisualGeolocation 
+                    analysis={analysis} 
+                    backendUrl={BACKEND_URL}
+                  />
+                )}
                 {activeTab === 'timeline' && (
                   <TimelineAnalyser 
                     analysis={analysis} 

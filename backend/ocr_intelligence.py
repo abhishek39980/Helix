@@ -10,24 +10,6 @@ _ocr_engine_loaded = False
 _easyocr_reader = None
 _paddle_ocr = None
 
-# Attempt to load PaddleOCR or EasyOCR dynamically
-try:
-    from paddleocr import PaddleOCR
-    # Initialize PaddleOCR (only English/Japanese as examples)
-    _paddle_ocr = PaddleOCR(use_angle_cls=True, lang="en")
-    _ocr_engine_loaded = True
-    logger.info("PaddleOCR initialized successfully.")
-except Exception as e_paddle:
-    logger.info(f"PaddleOCR not available: {e_paddle}. Attempting EasyOCR...")
-    try:
-        import easyocr
-        # Initialize EasyOCR reader
-        _easyocr_reader = easyocr.Reader(['en', 'ja'])
-        _ocr_engine_loaded = True
-        logger.info("EasyOCR initialized successfully.")
-    except Exception as e_easy:
-        logger.warning(f"EasyOCR not available: {e_easy}. Running in simulation/regex fallback mode.")
-
 
 def extract_metadata_patterns(text: str) -> dict:
     """Parses text content to extract usernames, URLs, hashtags, domains, locations, and phone numbers."""
@@ -103,47 +85,13 @@ def detect_logos_and_watermarks(text: str) -> list:
 def perform_ocr_on_image(image_bytes: bytes, filename: str = "") -> dict:
     """
     Orchestrates OCR extraction.
-    If real PaddleOCR/EasyOCR is available, executes it.
-    Otherwise, executes simulated OCR matching for demo forensic files.
+    Routes execution to OCRManager to avoid fabricated demo/simulation states.
     """
-    ocr_text = ""
+    from ocr_manager import OCRManager
+    import os
+    strict_mode = os.getenv("FORENSIC_STRICT_MODE", "true").lower() == "true"
     
-    # 1. Run simulation check for Tokyo/Chiyoda demo files
-    fn_lower = filename.lower()
-    if not _ocr_engine_loaded or "demo" in fn_lower or "sushi" in fn_lower or "kasamacura" in fn_lower:
-        # Provide simulated Japanese railway/sushi OCR text for verification
-        ocr_text = "江戸前寿司 (Edomae Sushi) - JR EAST Chiyoda Line Terminal. Watermark @kasamacura."
-        logger.info(f"Using simulated OCR workspace for filename: {filename}")
-    else:
-        # Run real OCR if libraries are loaded
-        try:
-            if _paddle_ocr:
-                # PaddleOCR yields list of lists of results: [ [ [ [box], (text, conf) ] ] ]
-                result = _paddle_ocr.ocr(image_bytes, cls=True)
-                texts = []
-                if result and isinstance(result, list):
-                    for line in result:
-                        if line:
-                            for res in line:
-                                texts.append(res[1][0])
-                ocr_text = " ".join(texts)
-            elif _easyocr_reader:
-                # EasyOCR yields list of tuples: (box, text, confidence)
-                result = _easyocr_reader.readtext(image_bytes)
-                texts = [res[1] for res in result]
-                ocr_text = " ".join(texts)
-        except Exception as ocr_err:
-            logger.error(f"Real OCR processing failed: {ocr_err}. Falling back to empty text.")
-            ocr_text = ""
+    # Instantiate or run OCRManager
+    manager = OCRManager(strict_mode=strict_mode)
+    return manager.run_ocr(image_bytes, filename)
 
-    # 2. Extract features
-    features = extract_metadata_patterns(ocr_text)
-    
-    # 3. Detect logos
-    logos = detect_logos_and_watermarks(ocr_text)
-    
-    return {
-        "text": ocr_text,
-        "features": features,
-        "logos": logos
-    }

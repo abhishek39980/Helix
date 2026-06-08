@@ -548,11 +548,20 @@ async def run_trace_pipeline(job_id: str, session_id: str, origin_url: str = Non
         occurrences = []
         
         for idx, hit in enumerate(all_hits):
-            # Query provider mock keyframes/scenes or mock them if external url
-            cand_phash = ref_phash  # Mock same phash for simplicity of web tracking
-            cand_keyframes = kf_hashes
-            cand_scenes = ref_scenes
-            cand_dur = ref_dur
+            strict_mode = os.getenv("FORENSIC_STRICT_MODE", "true").lower() == "true"
+            if strict_mode:
+                # Under strict mode, check if we have cached phash details, else mark unavailable
+                cand_phash = hit.get("video_phash") or "Unavailable"
+                cand_keyframes = hit.get("keyframe_hashes") or []
+                cand_scenes = []
+                cand_dur = 0.0
+                status_str = "success" if cand_phash != "Unavailable" else "unavailable"
+            else:
+                cand_phash = ref_phash  # Mock same phash for simplicity of web tracking
+                cand_keyframes = kf_hashes
+                cand_scenes = ref_scenes
+                cand_dur = ref_dur
+                status_str = "success"
             
             sim_score, conf_score, signals = evaluate_similarity(
                 ref_phash, cand_phash,
@@ -563,6 +572,9 @@ async def run_trace_pipeline(job_id: str, session_id: str, origin_url: str = Non
             )
             
             mutation, mut_conf = classify_mutation(sim_score, signals, ref_dur, cand_dur)
+            if strict_mode and status_str == "unavailable":
+                mutation = "Unverified (Remote Media Not Ingested)"
+                mut_conf = 0.0
             
             # Formulate timestamp (ensure it's not None)
             ts = hit.get("timestamp") or datetime.now(timezone.utc).replace(tzinfo=None)

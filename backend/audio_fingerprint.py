@@ -65,7 +65,12 @@ def calculate_audio_hash(video_path: str) -> str:
         except Exception as e:
             logger.warning(f"FFmpeg audio extraction failed: {e}. Moving to metadata pseudo-hash.")
 
-    # 3. Secure Metadata-based Pseudo-hash Fallback
+    # 3. Secure Metadata-based Pseudo-hash Fallback (Disabled in FORENSIC_STRICT_MODE)
+    strict_mode = os.getenv("FORENSIC_STRICT_MODE", "true").lower() == "true"
+    if strict_mode:
+        logger.info("FORENSIC_STRICT_MODE active: pseudo-audio hash generation bypassed.")
+        return "Unavailable"
+        
     try:
         logger.info("Generating metadata-based pseudo-audio hash...")
         file_size = os.path.getsize(video_path)
@@ -78,3 +83,4 @@ def calculate_audio_hash(video_path: str) -> str:
     except Exception as e:
         logger.error(f"Fallback pseudo-hash generation failed: {e}")
         return "Unavailable"
+

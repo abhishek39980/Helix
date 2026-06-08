@@ -91,7 +91,7 @@ export default function PropagationNetwork({
                     cy={node.y} 
                     r={isHovered ? "14" : "10"} 
                     fill={
-                      node.id === 'kasamacura' ? '#2563eb' :
+                      node.id === 'node_root' ? '#2563eb' :
                       node.type === 'media' ? '#06b6d4' :
                       node.type === 'platform' ? '#27272a' :
                       node.type === 'bot' ? '#dc2626' :

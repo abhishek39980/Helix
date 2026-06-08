@@ -61,6 +61,24 @@ def test_cases_crud(client):
     response = client.get(f"/api/cases/{case_id}", headers=headers)
     assert response.status_code == 404
 
+@pytest.mark.anyio
+async def test_get_social_data():
+    from backend import get_social_data
+    # Verify routing and structure
+    # 1. Telegram
+    profile, tweets, tweet_source = await get_social_data("Telegram", "durov")
+    assert profile["username"] == "@durov"
+    assert profile["tweet_source"] == "telegram"
+    assert tweet_source == "telegram"
+    assert isinstance(tweets, list)
+    
+    # 2. Reddit
+    profile_r, tweets_r, source_r = await get_social_data("Reddit", "spez")
+    assert profile_r["username"] == "u/spez"
+    assert profile_r["tweet_source"] == "reddit"
+    assert source_r == "reddit"
+    assert isinstance(tweets_r, list)
+
 # Cleanup the test database
 @pytest.fixture(scope="session", autouse=True)
 def cleanup_test_db():

@@ -1,0 +1,184 @@
+# HELIX FORENSIC ENGINE — ARCHITECTURAL SPECIFICATION & SYSTEM FLOW
+
+This document serves as the technical reference manual for the HELIX Forensic Engine, detailing the platform's execution pipelines, underlying components, strict mode constraints, and evidentiary scoring rules.
+
+---
+
+## 1. MISSION & CORE PRINCIPLES
+
+HELIX is a production-grade, evidence-driven forensic intelligence and OSINT platform designed for professional investigations and evidentiary reporting. It operates under a zero-trust model regarding source data.
+
+### Strict Forensic Mode (FORENSIC_STRICT_MODE = True)
+Under strict mode, the engine enforces these non-negotiable mandates:
+*   **No Fabricated Evidence**: Fallback mock videos, pseudo-tweets, simulated OCR, and fake profile data are prohibited.
+*   **No Hardcoded Mappings**: Geographic entity associations must be geocoded dynamically via active lookup APIs, not matched statically (e.g. mapping cultural terms directly in code).
+*   **Explicit Failures**: Any network, scraping, or media extraction failure must propagate as an explicit "Unavailable" status rather than falling back to simulated placeholders.
+*   **Persistent Auditing**: Every piece of collected intelligence must be written to the database with source provenance metadata (origin URL, headers, timestamps, reliability scores).
+
+---
+
+## 2. BACKEND ARCHITECTURE & COMPONENTS
+
+The backend is structured into specialized, independent analysis layers coordinated by the central ingestion pipeline.
+
+```
+                  +-----------------------------------+
+                  |      User Ingress (URL / File)    |
+                  +-----------------+-----------------+
+                                    |
+                                    v
+                  +-----------------+-----------------+
+                  |          MediaResolver            | (MIME validation,
+                  |  (Magic Bytes & Size Verification)|  250MB limit)
+                  +-----------------+-----------------+
+                                    |
+                                    v
+                  +-----------------+-----------------+
+                  |     ProfileCollectionPipeline     | (Priority scraper chain:
+                  |    (Bio, Posts, Meta Ingress)     |  API -> Badger -> Nitter)
+                  +-----------------+-----------------+
+                                    |
+            +-----------------------+-----------------------+
+            |                       |                       |
+            v                       v                       v
++-----------+-----------+ +---------+---------+ +-----------+-----------+
+|   Language/Context    | |  EntityResolution   | |   TimezoneEngine    |
+|   Script Analyzers    | |  (spaCy NER & geo)  | |  (Snowflake/Post    |
++-----------+-----------+ +---------+---------+ |   Hour Histogram)   |
+            |                       |           +-----------+-----------+
+            |                       v                       |
+            |             +---------+---------+             |
+            |             | KnowledgeResolver |             |
+            |             | (Wikidata & OSM)  |             |
+            |             +---------+---------+             |
+            +-----------------------+-----------------------+
+                                    |
+                                    v
+                  +-----------------+-----------------+
+                  |      IdentityResolutionEngine     | (Jaro-Winkler cross-
+                  |     (Cross-Platform Search)       |  platform matching)
+                  +-----------------+-----------------+
+                                    |
+                                    v
+                  +-----------------+-----------------+
+                  |      EvidenceScoringEngine        | (Strict confidence caps
+                  |   (Ensemble Confidence & Cap)     |  & corroboration boost)
+                  +-----------------+-----------------+
+                                    |
+                                    v
+                  +-----------------+-----------------+
+                  |      Evidentiary DB Writer        | (SQLite DB logging to
+                  |     (Session & Artifact Logs)     |  evidence_artifacts)
+                  +-----------------------------------+
+```
+
+### A. Media Resolution Pipeline (`media_resolver.py`)
+Enforces boundary validation and handles redirects:
+1.  **URL Redirections**: Rewrites standard Twitter/X links to direct-media extraction proxies (FxTwitter/VxTwitter), queries Telegram embed paths, and parses Reddit JSON APIs.
+2.  **yt-dlp Subprocess**: Serves as a dynamic crawler fallback to resolve stream paths for complex video sites.
+3.  **Strict Signature Verification**: Checks the first 4–8 magic bytes of downloaded files against signatures (PNG, JPEG, GIF, WebM/MKV, MP4, AVI) to reject raw HTML pages and spoofed binaries.
+4.  **Resource Limits**: Enforces a strict size cap of 250MB on all ingested files.
+
+### B. Dynamic OCR Engine (`ocr_manager.py`)
+Extracts text patterns from frame media:
+1.  **Provider Chain**: Cascades execution down a priority list: `PaddleOCR` -> `EasyOCR` -> `Tesseract` (local binary execution).
+2.  **Metadata Extraction**: Extracts domain addresses, phone numbers, social media handles, and location keywords.
+3.  **Watermark/Logo Detection**: Scans extracted strings against news organizations (CNN, BBC), social networks (TikTok, Telegram), transport systems (JR East), or targeted profile watermarks.
+
+### C. Geocoding & Context Resolution (`knowledge_resolver.py`)
+Maps named entities to geography without hardcoded arrays:
+1.  **Wikidata API (`action=wbsearchentities`)**: Searches Wikidata entries, parsing coordinates (Property P625) and country associations (Property P17).
+2.  **OpenStreetMap (Nominatim)**: Backs up entity lookup using Nominatim's address geocoder.
+3.  **OpenCage Geocoder**: Provides secondary geocoding with timezone offsets when credentials are provided.
+
+### D. Named Entity & Script Analyzers (`entity_resolution.py` & `backend.py`)
+*   **spaCy NER**: Extracts GPE, LOC, FAC, and ORG entities from profile bios and posts, geocoding them via the `KnowledgeResolver`.
+*   **Multilingual Script Detector**: Performs regex check for Japanese script (Hiragana/Katakana) in bios and posts, attributing language script to Japan.
+*   **Cultural Context Matcher**: Matches cultural terms (sushi, ramen, Japanese greetings, Japanese language references) in text and geocodes them dynamically.
+
+### E. Temporal Timezone Inference (`timezone_engine.py`)
+Estimates offset by cross-referencing multiple time cues:
+1.  **Text Signals**: Scans bios and posts for explicit GMT/UTC offsets or timezone codes (JST, CET, EST, etc.).
+2.  **Posting Hours Histogram**: Generates a 24-hour UTC activity distribution from posts. Computes the offset by aligning the peak 6-hour activity window with typical local evening hours (centered around 8:00 PM local time). Requires a minimum of 10 posts for statistical relevance.
+
+### F. Identity Resolution Engine (`identity_resolution.py`)
+Performs cross-platform correlation:
+1.  Queries Serper APIs across 8 platforms (GitHub, LinkedIn, Reddit, Telegram, TikTok, Instagram, Bluesky, Mastodon).
+2.  **Jaro-Winkler Username Similarity**: Calculates matching score. Accounts for character prefix/suffix matches (e.g. adding `_dev`, `_official`), preventing false negatives common to Levenshtein distance.
+
+### G. Evidence Scoring & Capping Engine (`evidence_scoring.py`)
+Aggregates all geocoded candidates and computes the final confidence percentage:
+*   **1 Active Layer**: Capped at **40% max confidence** (Classification: PROBABLE CORRELATION).
+*   **2 Active Layers**: Capped at **65% max confidence** (Classification: MEDIUM FORENSIC CREDIBILITY).
+*   **3+ Corroborating Layers**: Boosted to **80%+ confidence** (Classification: HIGH FORENSIC CREDIBILITY).
+*   **Agreement Score**: Measures consensus (winning country score divided by the sum of all country scores).
+
+---
+
+## 3. COMPREHENSIVE WORKFLOW FLOWCHART
+
+When an investigator submits a link (e.g., a Twitter profile), the Helix engine processes it through the following logical steps:
+
+```
+[User submits URL]
+       |
+       v
+[Parse platform type]
+       |
+       +--> Telegram/Reddit: scrapers fetch channel details/posts
+       |
+       +--> Twitter/X: checks cached lookup first (to isolate network tests)
+            If cache miss -> priority crawlers scrape profile details and posts
+       |
+       v
+[Extract profile description (bio) and posts text]
+       |
+       +--> Run Language Layer: scans text for Japanese script -> attributes Japan
+       |
+       +--> Run Context Layer: scans text for terms -> resolves term dynamically via Wikidata
+       |
+       +--> Run NER Layer: extracts location names -> geocodes them via Wikidata/OSM
+       |
+       +--> Run Timezone Layer: scans text for GMT/JST; compiles posting hours histogram
+       |
+       v
+[Identity Resolution Layer]
+       |
+       +--> Query Serper for same username on other domains (GitHub, Telegram, etc.)
+       +--> Calculate Jaro-Winkler username similarity score (requires >= 0.75 for a match)
+       |
+       v
+[Evidence Scoring Engine]
+       |
+       +--> Group all collected evidence by country candidate
+       +--> Compute base score (sum of reliabilities) and apply layers cap
+       +--> Generate structured explanation and audit trail
+       |
+       v
+[Evidentiary SQL Writer]
+       |
+       +--> Commits all Evidence dataclass objects to evidence_artifacts table
+       |
+       v
+[UI Ingress Render]
+       |
+       +--> Settings.jsx: Renders Strict Mode state and provider diagnostics
+       +--> EvidencePanel.jsx: Renders audit provenance trail and gauge
+```
+
+---
+
+## 4. SCHEMA AUDITING LOGS
+
+Database model written in SQLite to audit every step of the investigation:
+*   **Session Audit Logs**: Logs analysis actions, timestamps, IP addresses, and session IDs.
+*   **Evidence Artifacts Schema**:
+    *   `id` (Integer): Primary key.
+    *   `session_id` (String): Session foreign key.
+    *   `source` (String): Engine source (e.g. "Wikidata", "language_analyzer").
+    *   `source_type` (String): Type (e.g. "ner_entity", "language_script").
+    *   `collection_method` (String): Method (e.g. "api_query", "text_analysis").
+    *   `reliability` (Float): Quality coefficient (0.0 to 1.0).
+    *   `value` (JSON): Extracted payload containing geolocated attributes.
+    *   `metadata_json` (JSON): Request IDs and session details.
+    *   `created_at` (DateTime): Auditable UTC record timestamp.
